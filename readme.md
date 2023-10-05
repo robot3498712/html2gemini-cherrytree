@@ -15,6 +15,7 @@ You will now find your .gmi files in the /of/gemini folder. You can run a server
 ## CherryTree Mod and General Notes
 
 * Original projects (transformers such as now archived md2gemini) are somewhat inefficient.
+> Upgrade to python 3.12 (full conversion done in 30s [py3.10] > 22s [py3.12] for my reference ctb).
 > Enable incremental updates in config, using a hashtable (stored in script dir) for reference, to speed up consecutive runs.
 > Open an issue if you can recommend better solutions.
 * **Consider using a ram disk or tmpfs for file manipulation.**
