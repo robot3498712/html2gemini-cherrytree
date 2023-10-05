@@ -30,17 +30,17 @@ cfg.incremental = False
 # run commands before and after processing
 # examples:
 #	{
-#		'a' : True,													# active job
-#		'e': "True",												# evaluate expression
-#		'c': 'cherrytree -xw /tmp/dir /home/notes.ctb && sleep 3'	# command to run
-#		'^': "notes.ctb export started",							# optional: print before
+#		'a' : True,                                                 # active job
+#		'e': "True",                                                # evaluate expression
+#		'c': 'cherrytree -xw /home/dir /home/notes.ctb && sleep 3'  # command to run
+#		'^': "notes.ctb export started",                            # optional: print before
 #	}
 #	{
-#		'a' : True,													# active job
-#		'e': "isCherryTree and htmlList",							# evaluate expression
-#		'c': 'rsync -rtq of/gemini/ ssh:/home/cherrytree/'			# command to run
-#		'^': "rsync files",											# optional: print before
-#		'$': "Done"													# optional: print after
+#		'a' : True,                                                 # active job
+#		'e': "isCherryTree and htmlList",                           # evaluate expression
+#		'c': 'rsync -rtq of/gemini/ ssh:/home/cherrytree/'          # command to run
+#		'^': "rsync files",                                         # optional: print before
+#		'$': "Done"                                                 # optional: print after
 #	}
 cfg.run = {
 	'pre': [

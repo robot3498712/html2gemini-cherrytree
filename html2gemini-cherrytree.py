@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 '''
-html2gemini-cherrytree :: 0.1.0
+html2gemini-cherrytree :: 0.1.1
 author: robot 
 '''
 
 import sys, os, re, time, subprocess, bleach, hashlib, pickle, gzip
 from chardet.universaldetector import UniversalDetector
+from argparse import ArgumentParser
 from markdownify import markdownify
 from types import SimpleNamespace
 from md2gemini import md2gemini
@@ -228,6 +229,18 @@ def convert(outputPath, htmlList):
 
 if __name__ == "__main__":
 	sd, isCherryTree, cherryTreeDb = os.path.dirname(os.path.realpath(__file__)), False, None
+
+	parser = ArgumentParser(description='html2gemini-cherrytree')
+	parser.add_argument('-v', '--version', action='version', version='0.1.1')
+	parser.add_argument('-i', '--incremental', help='incremental cherrytree updates', nargs='?', const=True, required=False)
+	parser.add_argument('-I', '--nincremental', help='disable incremental cherrytree updates', nargs='?', const=True, required=False)
+	parser.add_argument('-w', '--overwrite', help='overwrite files', nargs='?', const=True, required=False)
+	parser.add_argument('-W', '--noverwrite', help='disable overwrite files', nargs='?', const=True, required=False)
+	args = parser.parse_args()
+
+	for _attr in ['incremental', 'overwrite']:
+		if getattr(args, _attr) is not None: setattr(cfg, _attr, True)
+		if getattr(args, f"n{_attr}") is not None: setattr(cfg, _attr, False)
 
 	# pre-processing
 	run(cfg.run["pre"])
