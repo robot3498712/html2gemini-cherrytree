@@ -2,3 +2,4 @@ md2gemini
 markdownify
 Bleach
 chardet
+tqdm

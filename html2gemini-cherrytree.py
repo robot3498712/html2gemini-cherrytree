@@ -1,20 +1,22 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.13t
 '''
-html2gemini-cherrytree :: 0.1.1
+html2gemini-cherrytree :: 0.1.2
 author: robot 
 '''
 
 import sys, os, re, time, subprocess, bleach, hashlib, pickle, gzip
 from chardet.universaldetector import UniversalDetector
+from concurrent.futures import ThreadPoolExecutor
 from argparse import ArgumentParser
 from markdownify import markdownify
 from types import SimpleNamespace
 from md2gemini import md2gemini
 from bs4 import BeautifulSoup
 from pathlib import Path
+from tqdm import tqdm
 from _config import cfg
 
-def wipe(path): # might be faster to unlink dir, then recreate
+def wipe(path):
 	for root, dirs, files in os.walk(path):
 		for file in files:
 			os.remove(os.path.join(root, file))
@@ -28,13 +30,11 @@ def identCherryTree(path):
 
 def get_paths(dir):
 	pathList = []
-	for itm in os.listdir(dir):
-		path = os.path.join(dir, itm)
-		pathList.append(path)
-		try:
-			pathList += get_paths(path)
-		except:
-			pass
+	with os.scandir(dir) as entries:
+		for entry in entries:
+			pathList.append(entry.path)
+			if entry.is_dir():
+				pathList.extend(get_paths(entry.path))
 	return pathList
 
 def get_html(pathList):
@@ -72,6 +72,8 @@ attr = {
 	'style': ['type']
 }
 
+headp = re.compile(r'(<h[1-7]>)(.*?)(</h[1-7]>)', re.DOTALL)
+
 def convert_html_to_stripped_html(g):
 	remove_head(g)
 	g.txt = bleach.clean(
@@ -81,8 +83,8 @@ def convert_html_to_stripped_html(g):
 		strip=True,
 		strip_comments=True
 	)
-	g.txt = g.txt.replace("<br/>", "\n").replace("<br>", "\n")
-	g.txt = g.txt.replace("<hr/>", "-"*30).replace("<hr>", "-"*30)
+	g.txt = re.sub(r'<br\s*/?>|<hr\s*/?>', lambda match: '\n' if 'br' in match.group() else '-'*30, g.txt)
+
 	remove_heading_newlines(g)
 	g.txt = g.txt.strip()
 
@@ -99,41 +101,12 @@ def remove_head(g):
 
 		g.txt = g.txt[:start] + g.txt[end:]
 
-def remove_heading_newlines(g): # what is this doing?
-	for h_num in range(1, 7):
-		pos = 0
-		last = 0
-		html_sep = []
+def remove_heading_newlines(g):
+	def clean_heading(match):
+		open_tag, content, close_tag = match.groups()
+		return f"{open_tag}{content.replace('\r', '').replace('\n', '').strip()}{close_tag}"
 
-		h = "h" + str(h_num)
-		h_open = re.compile(re.escape(f"<{h}>"))
-		h_close = re.compile(re.escape(f"</{h}>"))
-
-		start = h_open.search(g.txt, pos)
-
-		while start is not None :
-			start = start.span()[1]
-			pos = start
-			end = h_close.search(g.txt, pos)
-
-			if end is not None :
-				pos = end.span()[1]
-				end = end.span()[0]
-
-				heading = g.txt[start:end]
-				heading = heading.replace("\r", "")
-				heading = heading.replace("\n", "")
-
-				html_sep.append(g.txt[last:start])
-				html_sep.append(heading)
-				html_sep.append(g.txt[end:pos])
-
-			last = pos
-			start = h_open.search(g.txt, pos)
-
-		html_sep.append(g.txt[last:])
-		g.txt = "".join(html_sep)
-# end remove_heading_newlines()
+	g.txt = headp.sub(clean_heading, g.txt)
 
 def convert_html_to_md(g):
 	g.txt = markdownify(g.txt, strip=['style'], heading_style="ATX")
@@ -149,12 +122,13 @@ def convert_md_to_gemini(g):
 	# copy|default|..
 	g.txt = md2gemini(g.txt, links="default")
 	g.txt = re.sub(r'[\r\n][\r\n]{2,}', '\n\n', g.txt)
-	g.txt = g.txt.replace("&amp;", "%26") # appears being a bug
+	# bug fixes
+	g.txt = re.sub(r'(?m)^=>.*\\', lambda m: m.group(0).replace('\\', ''), g.txt)
+	g.txt = g.txt.replace("&amp;", "%26")
 	links_to_gemini(g)
 
 def links_to_gemini(g):
 	lines = g.txt.split("\n")
-
 	for ln, line in enumerate(lines):
 		if ".html" in line and "http" not in line or cfg.domain in line:
 			line = line.replace("html", "gmi")
@@ -167,27 +141,21 @@ def links_to_gemini(g):
 				lines[ln] = line.replace(str(url), str(link))
 	g.txt = "\n".join(lines)
 
-def convert_to_utf8(g): # dubious
+def convert_to_utf8(g):
 	g.detector.reset()
 	with open(g.pathInput, 'rb') as f:
-		b = f.read()
-		f.seek(0, 0)
-		for line in f:
-			g.detector.feed(line)
-			if g.detector.done:
-				break
+		content = f.read()
+		g.detector.feed(content)
 		g.detector.close()
 
 	encoding = g.detector.result["encoding"]
-	if encoding in ['utf-8', 'ascii']: g.txt = b.decode('utf-8')
-	else: g.txt = b.decode(encoding)
+	g.txt = content.decode(encoding if encoding not in ['utf-8', 'ascii'] else 'utf-8')
 
 def file_exists(file_path):
-	if not os.path.exists(file_path):
+	try:
+		return os.path.getsize(file_path) > 0
+	except FileNotFoundError:
 		return False
-	if os.path.getsize(file_path) == 0:
-		return False
-	return True
 
 def run(jobs):
 	for run in jobs:
@@ -199,39 +167,42 @@ def run(jobs):
 			subprocess.Popen(run['c'], shell=True, stdout=subprocess.PIPE).stdout.read()
 			if '$' in run: print(run['$'])
 
+def process_file(ns, outputPath, pbar):
+	if not ns.pathInput.endswith(".html") and not ns.pathInput.endswith(".htm"):
+		pbar.update(1)
+		return None
+
+	if not isCherryTree:
+		ns.detector = UniversalDetector()
+		convert_to_utf8(ns)
+	else:  # no need to bother with the wonky detection
+		with open(ns.pathInput, 'rb') as f:
+			b = f.read()
+		ns.txt = b.decode('utf-8')
+
+	convert_html_to_stripped_html(ns)
+	convert_html_to_md(ns)
+	convert_md_to_gemini(ns)
+
+	fileOutput = os.path.join(outputPath, "./gemini/", f"{Path(ns.pathInput).stem}.gmi")
+	if cfg.overwrite or not file_exists(fileOutput):
+		with open(fileOutput, "w", encoding="utf-8") as f:
+			f.write(ns.txt)
+	pbar.update(1)
+
 def convert(outputPath, htmlList):
-	startTime = time.time()
-	ns = SimpleNamespace()
-
-	for ns.pathInput in htmlList:
-		if not ns.pathInput.endswith(".html") and not ns.pathInput.endswith(".htm"):
-			continue
-
-		if not isCherryTree:
-			ns.detector = UniversalDetector()
-			convert_to_utf8(ns)
-		else: # no need to bother with the wonky detection
-			with open(ns.pathInput, 'rb') as f:
-				b = f.read()
-			ns.txt = b.decode('utf-8')
-
-		convert_html_to_stripped_html(ns)
-		convert_html_to_md(ns)
-		convert_md_to_gemini(ns)
-
-		fileOutput = os.path.join(outputPath, "./gemini/", f"{Path(ns.pathInput).stem}.gmi")
-		if cfg.overwrite or not file_exists(fileOutput):
-			with open(fileOutput, "w", encoding="utf-8") as f:
-				f.write(ns.txt)
-	# end FOR
-	print("conversion completed in %d seconds" % (int(time.time() - startTime),))
-# end convert()
+	with tqdm(desc='convert', total=len(htmlList)) as pbar:
+		with ThreadPoolExecutor() as exe:
+			for pathInput in htmlList:
+				ns = SimpleNamespace()
+				ns.pathInput = pathInput
+				exe.submit(process_file, ns, outputPath, pbar)
 
 if __name__ == "__main__":
 	sd, isCherryTree, cherryTreeDb = os.path.dirname(os.path.realpath(__file__)), False, None
 
 	parser = ArgumentParser(description='html2gemini-cherrytree')
-	parser.add_argument('-v', '--version', action='version', version='0.1.1')
+	parser.add_argument('-v', '--version', action='version', version='0.1.2')
 	parser.add_argument('-i', '--incremental', help='incremental cherrytree updates', nargs='?', const=True, required=False)
 	parser.add_argument('-I', '--nincremental', help='disable incremental cherrytree updates', nargs='?', const=True, required=False)
 	parser.add_argument('-w', '--overwrite', help='overwrite files', nargs='?', const=True, required=False)
@@ -340,7 +311,7 @@ if __name__ == "__main__":
 			htmlList = htmlListDelta
 		# end IF incremental
 	# end IF isCherryTree
-	print("indexing completed")
+	print("index completed")
 
 	if len(htmlList):
 		convert(outputPath, htmlList)
