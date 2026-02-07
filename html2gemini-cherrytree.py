@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.13t
 '''
-html2gemini-cherrytree :: 0.1.2
+html2gemini-cherrytree :: 0.1.3
 author: robot 
 '''
 
@@ -193,16 +193,21 @@ def process_file(ns, outputPath, pbar):
 def convert(outputPath, htmlList):
 	with tqdm(desc='convert', total=len(htmlList)) as pbar:
 		with ThreadPoolExecutor() as exe:
+			futures = []
 			for pathInput in htmlList:
 				ns = SimpleNamespace()
 				ns.pathInput = pathInput
-				exe.submit(process_file, ns, outputPath, pbar)
+				futures.append(
+					exe.submit(process_file, ns, outputPath, pbar)
+				)
+			# surface exceptions (md2gemini is abandoned)
+			for f in futures: f.result()
 
 if __name__ == "__main__":
 	sd, isCherryTree, cherryTreeDb = os.path.dirname(os.path.realpath(__file__)), False, None
 
 	parser = ArgumentParser(description='html2gemini-cherrytree')
-	parser.add_argument('-v', '--version', action='version', version='0.1.2')
+	parser.add_argument('-v', '--version', action='version', version='0.1.3')
 	parser.add_argument('-i', '--incremental', help='incremental cherrytree updates', nargs='?', const=True, required=False)
 	parser.add_argument('-I', '--nincremental', help='disable incremental cherrytree updates', nargs='?', const=True, required=False)
 	parser.add_argument('-w', '--overwrite', help='overwrite files', nargs='?', const=True, required=False)
@@ -243,7 +248,7 @@ if __name__ == "__main__":
 		# creating gmi files may be better; see convert_md_to_gemini() and link modes
 		def Tree(ul, root=None):
 			result = {}
-			for el in ul.findChildren(['li'], recursive=False):
+			for el in ul.find_all(['li'], recursive=False):
 				a = el.find('a')
 				key = a['onclick'].replace("changeFrame('", '')[:-2]
 				# ul.subtree always follows li

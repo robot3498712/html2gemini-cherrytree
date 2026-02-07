@@ -12,6 +12,12 @@ This python3 program facilitates converting html to gmi files, with a focus on C
 You will now find your .gmi files in the /of/gemini folder. You can run a server with those files and everything should work. This script is intended to be used on CherryTree html exports. Codeblocks are somewhat buggy from time to time.
 
 
+## Patch
+
+md2gemini is abandoned. See patch directory for a quick "works for me" fix. 
+The alternative is downgrading dependencies such as mistune. 
+
+
 ## CherryTree Mod and General Notes
 
 * Original projects (transformers such as now archived md2gemini) are somewhat inefficient.
